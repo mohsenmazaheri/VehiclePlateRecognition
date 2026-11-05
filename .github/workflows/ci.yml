@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            arch: win64_msvc2022_64
+          - os: ubuntu-24.04
+            arch: linux_gcc_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgl1-mesa-dev libegl1 libxkbcommon0 libpulse0 libglib2.0-0
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: ${{ matrix.arch }}
+          modules: qtmultimedia
+          cache: true
+
+      - name: Cache ONNX Runtime and the model
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party
+            models
+          key: deps-${{ runner.os }}-${{ hashFiles('scripts/fetch-dependencies.sh') }}
+
+      - name: Download ONNX Runtime and the model
+        shell: bash
+        run: bash scripts/fetch-dependencies.sh
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build --build-config Release --output-on-failure
+        env:
+          QT_QPA_PLATFORM: offscreen

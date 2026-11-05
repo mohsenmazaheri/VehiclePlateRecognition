@@ -1,0 +1,6 @@
+add_executable(vpr-test-ui WIN32 main.cpp main_window.cpp video_view.cpp image_box.cpp)
+target_link_libraries(vpr-test-ui PRIVATE vpr_qt vpr_tracking Qt6::Widgets)
+if(VPR_HAS_ONNX)
+    target_link_libraries(vpr-test-ui PRIVATE vpr_onnx)
+    vpr_copy_onnx_runtime(vpr-test-ui)
+endif()

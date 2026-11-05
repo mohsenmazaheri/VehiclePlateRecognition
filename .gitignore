@@ -1,0 +1,23 @@
+build/
+build-*/
+CMakeLists.txt.user
+.vs/
+.vscode/
+
+# Road footage and labels contain personal data. They never go into the public repository.
+data/
+*.mp4
+*.mov
+*.mkv
+*.avi
+
+# Trained weights stay private, see docs.
+models/
+*.onnx
+*.pth
+
+# Word lock files
+~$*
+
+# Downloaded by scripts/fetch-dependencies.sh
+third_party/
