@@ -10,7 +10,7 @@ endif()
 # refreshes the .ts files from the code; the .qm files are built into the program.
 find_package(Qt6 OPTIONAL_COMPONENTS LinguistTools)
 if(Qt6LinguistTools_FOUND)
-    qt_add_translations(vpr-test-ui TS_FILES translations/vpr-test-ui_fa.ts
+    qt_add_translations(vpr-test-ui TS_FILES translations/vpr-test-ui_fa.ts translations/vpr-test-ui_hy.ts
                         LUPDATE_OPTIONS -locations none -no-obsolete)
 else()
     message(STATUS "Qt Linguist tools not found: the test tool is built in English only")

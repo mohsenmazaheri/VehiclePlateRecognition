@@ -8,7 +8,7 @@
 class Language final {
 public:
     struct Option {
-        QString code;        // "en", "fa"
+        QString code;        // "en", "fa", "hy"
         QString nativeName;  // shown in the language list, never translated
     };
 

@@ -30,7 +30,7 @@ int main(int argc, char* argv[])
     const QCommandLineOption quitAtEnd(QStringLiteral("quit-at-end"),
                                        QStringLiteral("Exit when the video ends, after saving --snapshot if given."));
     const QCommandLineOption language(QStringLiteral("language"),
-                                      QStringLiteral("Language of the window: en or fa. The choice is remembered."),
+                                      QStringLiteral("Language of the window: en, fa or hy. The choice is remembered."),
                                       QStringLiteral("code"));
     parser.addOptions({video, snapshot, seconds, dataDirectory, line, quitAtEnd, language});
     parser.process(app);

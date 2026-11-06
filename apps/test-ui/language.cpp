@@ -27,7 +27,8 @@ bool isAvailable(const QString& code)
 
 QList<Language::Option> Language::available()
 {
-    return {{kEnglish, QStringLiteral("English")}, {QStringLiteral("fa"), QStringLiteral("فارسی")}};
+    return {{kEnglish, QStringLiteral("English")}, {QStringLiteral("fa"), QStringLiteral("فارسی")},
+            {QStringLiteral("hy"), QStringLiteral("Հայերեն")}};
 }
 
 QString Language::preferred()

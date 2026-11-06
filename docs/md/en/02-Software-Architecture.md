@@ -103,7 +103,7 @@ Implement the matching port in a new adapter. Only the composition root changes.
 
 ### Add a language to the test application
 
-The test application is in English and Persian, and the language can be changed while it runs. Persian turns the window right to left and uses Persian digits, while plate text always reads left to right. To add a language, add its translation file in apps/test-ui/translations to the build and its name to Language::available(). The update_translations build target collects new texts from the code into the translation files.
+The test application is in English, Persian and Armenian, and the language can be changed while it runs. Persian turns the window right to left and uses Persian digits, while plate text always reads left to right. Qt has no Armenian translation of its own dialogs, such as the file dialog, so those stay in English when Armenian is chosen. To add a language, add its translation file in apps/test-ui/translations to the build and its name to Language::available(). The update_translations build target collects new texts from the code into the translation files.
 
 ## 10. Tests and CI
 
