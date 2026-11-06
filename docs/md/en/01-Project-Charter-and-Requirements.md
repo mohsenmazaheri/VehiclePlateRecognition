@@ -12,7 +12,7 @@ The architecture, tracker, line crossing, plate voting, storage, camera sources 
 - Vehicle detection runs with a pretrained YOLOX-S model on the CPU. GPU use is not connected yet.
 - Plates are found and read with two published trial models. On seven Yerevan videos, 229 vehicles crossed the line and 191 plates were read in a private Armenian format. Accuracy has not been measured, because no labelled test set exists yet. See section 11 of the architecture document.
 - The trial reader knows Latin letters only, so Iranian plates cannot be read yet. The licences of the trial models are not settled for commercial use.
-- The GitHub repository and the CI run do not exist yet. The workflow file is written but has never run.
+- The code is public at github.com/mohsenmazaheri/VehiclePlateRecognition since 6 November 2026, without a licence for now.
 
 ## 3. Scope of version 1
 
@@ -84,7 +84,7 @@ Values marked as proposed were suggested during planning and are the working ass
 
 | Phase | Weeks | Result |
 | --- | --- | --- |
-| 1. Foundation | 1 | Core, test application and documents. Done, except publishing to GitHub |
+| 1. Foundation | 1 | Core, test application and documents. Done, published on GitHub |
 | 2. Vehicle detection | 2 to 3 | YOLOX through ONNX Runtime, tested with real video from Yerevan. Done, with trial plate models added early |
 | 3. Data | 2 to 7 | Filming and labelling in both countries, running alongside other phases |
 | 4. Plate models | 4 to 8 | Plate detector and character reader trained for both countries |
@@ -105,6 +105,5 @@ Values marked as proposed were suggested during planning and are the working ass
 
 ## 10. Open decisions
 
-- Licence for the public source code. No licence file has been added yet, so all rights stay reserved until this is chosen.
-- GitHub repository name and publication.
+- Licence for the public source code. It is published without a licence for now (6 November 2026), so all rights stay reserved: people can read the code but not reuse it.
 - Confirmation of the three proposed values in section 4.
