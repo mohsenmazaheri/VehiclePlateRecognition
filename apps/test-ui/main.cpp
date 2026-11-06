@@ -1,3 +1,4 @@
+#include "language.h"
 #include "main_window.h"
 
 #include <QApplication>
@@ -28,10 +29,15 @@ int main(int argc, char* argv[])
                                   QStringLiteral("points"));
     const QCommandLineOption quitAtEnd(QStringLiteral("quit-at-end"),
                                        QStringLiteral("Exit when the video ends, after saving --snapshot if given."));
-    parser.addOptions({video, snapshot, seconds, dataDirectory, line, quitAtEnd});
+    const QCommandLineOption language(QStringLiteral("language"),
+                                      QStringLiteral("Language of the window: en or fa. The choice is remembered."),
+                                      QStringLiteral("code"));
+    parser.addOptions({video, snapshot, seconds, dataDirectory, line, quitAtEnd, language});
     parser.process(app);
 
-    MainWindow window(parser.value(dataDirectory));
+    Language languages;
+    languages.apply(parser.isSet(language) ? parser.value(language) : Language::preferred());
+    MainWindow window(languages, parser.value(dataDirectory));
     window.show();
 
     if (parser.isSet(line)) {

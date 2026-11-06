@@ -9,6 +9,7 @@ public:
     explicit ImageBox(QString placeholder, QWidget* parent = nullptr);
 
     void setImage(const QImage& image, const QString& missingText = {});
+    void setPlaceholder(const QString& text);  // shown after clear()
     void clear();
 
 protected:

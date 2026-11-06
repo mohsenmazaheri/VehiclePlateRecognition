@@ -16,6 +16,11 @@ void ImageBox::setImage(const QImage& image, const QString& missingText)
     update();
 }
 
+void ImageBox::setPlaceholder(const QString& text)
+{
+    m_placeholder = text;
+}
+
 void ImageBox::clear()
 {
     m_image = {};

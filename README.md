@@ -33,7 +33,8 @@ ctest --test-dir build --output-on-failure
 Run `build/apps/test-ui/vpr-test-ui`, choose **Synthetic demo** or **Video file...** and press Start. Drag either end of the yellow line to move it.
 When a vehicle crosses the line, its plate text, plate photo and vehicle photo show at once and a row is added to the table.
 The table lists the passages of the current run; type in the search box to find stored passages of earlier runs.
-Options: `--video <file>` starts a file directly, `--line ax,ay,bx,by` places the line (0 to 1 of the picture), `--data-dir <folder>`
+The window is in English and Persian: choose the language at the right end of the toolbar, also while a video runs.
+Options: `--language en|fa` sets the language, `--video <file>` starts a file directly, `--line ax,ay,bx,by` places the line (0 to 1 of the picture), `--data-dir <folder>`
 keeps passages and photos there, and `--quit-at-end` exits when the video ends, after saving `--snapshot <file>` if given.
 
 Hand checked vehicle photos named after their plate, for example `data/plate-samples/12AB345.jpg`, are read by the `real_plates` test.

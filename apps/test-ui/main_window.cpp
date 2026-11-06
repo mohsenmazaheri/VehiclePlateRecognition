@@ -1,13 +1,14 @@
 #include "main_window.h"
 
 #include "domain/plate_format.h"
-#include "infrastructure/qt/evidence_sink.h"
 #include "image_box.h"
+#include "infrastructure/qt/evidence_sink.h"
 #include "infrastructure/qt/media_frame_sources.h"
 #include "infrastructure/qt/qt_image.h"
 #include "infrastructure/qt/sqlite_passage_repository.h"
 #include "infrastructure/qt/synthetic_frame_source.h"
 #include "infrastructure/tracking/byte_tracker.h"
+#include "language.h"
 #include "simulation/synthetic_scene.h"
 #include "video_view.h"
 
@@ -18,16 +19,16 @@
 
 #include <QApplication>
 #include <QComboBox>
-#include <QDateTime>
+#include <QDebug>
 #include <QDir>
+#include <QEvent>
 #include <QFile>
 #include <QFileDialog>
-#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
-#include <QPixmap>
+#include <QLocale>
 #include <QPushButton>
 #include <QSplitter>
 #include <QStandardPaths>
@@ -74,6 +75,13 @@ private:
     qt::SqlitePassageRepository m_repository;
 };
 
+// A plate reads left to right in every language. Without this mark a right to left window shows
+// "777 OQ 01" as "OQ 01 777".
+QString leftToRight(const QString& text)
+{
+    return text.isEmpty() ? text : QChar(0x202A) + text + QChar(0x202C);
+}
+
 QString statusText(PassageStatus status)
 {
     switch (status) {
@@ -108,9 +116,9 @@ QString findModel(const QString& fileName)
 
 } // namespace
 
-MainWindow::MainWindow(const QString& dataDirectory, QWidget* parent) : QMainWindow(parent)
+MainWindow::MainWindow(Language& language, const QString& dataDirectory, QWidget* parent)
+    : QMainWindow(parent), m_language(language)
 {
-    setWindowTitle(tr("Vehicle Plate Recognition: test tool"));
     resize(1200, 680);
 
     m_dataDirectory = dataDirectory.isEmpty()
@@ -128,25 +136,32 @@ MainWindow::MainWindow(const QString& dataDirectory, QWidget* parent) : QMainWin
     m_repository = openStore(m_dataDirectory);
     m_demoRepository = openStore(QDir(m_dataDirectory).filePath(QStringLiteral("demo")));
 
-    auto* toolbar = addToolBar(tr("Source"));
-    toolbar->setMovable(false);
+    // Item texts are set in retranslate(), only the number of items is fixed here.
+    m_toolbar = addToolBar(QString());
+    m_toolbar->setMovable(false);
     m_sourceBox = new QComboBox(this);
-    m_sourceBox->addItem(tr("Synthetic demo"));
-    m_sourceBox->addItem(tr("Video file..."));
-    m_sourceBox->addItem(tr("Camera"));
-    m_sourceBox->addItem(tr("Stream URL (RTSP)..."));
-    toolbar->addWidget(m_sourceBox);
+    for (int i = 0; i < 4; ++i)
+        m_sourceBox->addItem(QString());
+    m_toolbar->addWidget(m_sourceBox);
     m_countryBox = new QComboBox(this);
-    m_countryBox->addItem(tr("Plates: Armenia"));
-    m_countryBox->addItem(tr("Plates: Iran"));
-    m_countryBox->addItem(tr("Plates: Armenia and Iran"));
-    m_countryBox->setToolTip(tr("Only plates of these countries are accepted as read. Others are listed as unknown format."));
-    toolbar->addWidget(m_countryBox);
-    m_startButton = new QPushButton(tr("Start"), this);
-    m_stopButton = new QPushButton(tr("Stop"), this);
+    for (int i = 0; i < 3; ++i)
+        m_countryBox->addItem(QString());
+    m_toolbar->addWidget(m_countryBox);
+    m_startButton = new QPushButton(this);
+    m_stopButton = new QPushButton(this);
     m_stopButton->setEnabled(false);
-    toolbar->addWidget(m_startButton);
-    toolbar->addWidget(m_stopButton);
+    m_toolbar->addWidget(m_startButton);
+    m_toolbar->addWidget(m_stopButton);
+    auto* gap = new QWidget(this);
+    gap->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_toolbar->addWidget(gap);
+    m_languageBox = new QComboBox(this);
+    for (const Language::Option& option : Language::available()) {
+        m_languageBox->addItem(option.nativeName, option.code);
+        if (option.code == m_language.current())
+            m_languageBox->setCurrentIndex(m_languageBox->count() - 1);
+    }
+    m_toolbar->addWidget(m_languageBox);
 
     m_view = new VideoView(this);
     m_plateText = new QLabel(this);
@@ -156,15 +171,13 @@ MainWindow::MainWindow(const QString& dataDirectory, QWidget* parent) : QMainWin
     m_plateText->setFont(plateFont);
     m_plateText->setAlignment(Qt::AlignCenter);
     m_plateText->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    m_platePhoto = new ImageBox(tr("Plate photo"), this);
+    m_platePhoto = new ImageBox(QString(), this);
     m_platePhoto->setFixedHeight(70);
-    m_vehiclePhoto = new ImageBox(tr("Vehicle photo appears when a vehicle crosses the line"), this);
+    m_vehiclePhoto = new ImageBox(QString(), this);
     m_vehiclePhoto->setMinimumHeight(200);
     m_search = new QLineEdit(this);
-    m_search->setPlaceholderText(tr("Search stored plates"));
     m_search->setClearButtonEnabled(true);
     m_table = new QTableWidget(0, 4, this);
-    m_table->setHorizontalHeaderLabels({tr("Time"), tr("Plate"), tr("Country"), tr("Status")});
     m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -198,14 +211,58 @@ MainWindow::MainWindow(const QString& dataDirectory, QWidget* parent) : QMainWin
             showRows();
     });
     connect(m_table, &QTableWidget::itemSelectionChanged, this, &MainWindow::showSelectedPassage);
+    // The translators send QEvent::LanguageChange, which reaches changeEvent() below.
+    connect(m_languageBox, &QComboBox::currentIndexChanged, this,
+            [this](int index) { m_language.apply(m_languageBox->itemData(index).toString()); });
 
+    m_status = [] { return tr("Ready. Drag either end of the yellow line to move it."); };
+    retranslate();
     clearRun();  // the list shows this run only, stored passages are reached through search
-    showStatus(tr("Ready. Drag either end of the yellow line to move it."));
 }
 
 MainWindow::~MainWindow()
 {
     stop();
+}
+
+void MainWindow::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslate();
+    QMainWindow::changeEvent(event);
+}
+
+void MainWindow::retranslate()
+{
+    setWindowTitle(tr("Vehicle Plate Recognition: test tool"));
+    m_toolbar->setWindowTitle(tr("Source"));
+    m_sourceBox->setItemText(0, tr("Synthetic demo"));
+    m_sourceBox->setItemText(1, tr("Video file..."));
+    m_sourceBox->setItemText(2, tr("Camera"));
+    m_sourceBox->setItemText(3, tr("Stream URL (RTSP)..."));
+    m_countryBox->setItemText(0, tr("Plates: Armenia"));
+    m_countryBox->setItemText(1, tr("Plates: Iran"));
+    m_countryBox->setItemText(2, tr("Plates: Armenia and Iran"));
+    m_countryBox->setToolTip(tr("Only plates of these countries are accepted as read. Others are listed as unknown format."));
+    m_languageBox->setToolTip(tr("Language"));
+    m_startButton->setText(tr("Start"));
+    m_stopButton->setText(tr("Stop"));
+    m_platePhoto->setPlaceholder(tr("Plate photo"));
+    m_vehiclePhoto->setPlaceholder(tr("Vehicle photo appears when a vehicle crosses the line"));
+    m_search->setPlaceholderText(tr("Search stored plates"));
+    m_table->setHorizontalHeaderLabels({tr("Time"), tr("Plate"), tr("Country"), tr("Status")});
+
+    if (m_shown) {
+        const ShownPassage shown = *m_shown;  // showPassage() replaces m_shown
+        showPassage(shown);
+    } else {
+        m_plateText->setText(tr("No passage yet"));
+        m_vehiclePhoto->clear();
+        m_platePhoto->clear();
+    }
+    showRows();
+    showCounters(m_counterValues);
+    setStatus(m_status);
 }
 
 void MainWindow::start()
@@ -237,8 +294,7 @@ void MainWindow::start()
         source = std::make_unique<qt::MediaUrlFrameSource>(QUrl(url));
     }
 
-    const QString detectorStatus = demo ? QString() : prepareDetectors();
-    m_runStatus = detectorStatus;
+    m_detectorStatus = demo ? Text([] { return QString(); }) : prepareDetectors();
     const std::shared_ptr<IVehicleDetector> vehicleDetector = m_vehicleDetector;
     const std::shared_ptr<IPlateDetector> plateDetector = m_plateDetector;
     const std::shared_ptr<IPlateReader> plateReader = m_plateReader;
@@ -271,7 +327,7 @@ void MainWindow::start()
     }
     config.line = CountingLine{{m_view->lineA().x(), m_view->lineA().y()}, {m_view->lineB().x(), m_view->lineB().y()}};
     clearRun();
-    m_worker =std::make_unique<qt::PipelineWorker>(factory, selectedFormats(), config);
+    m_worker = std::make_unique<qt::PipelineWorker>(factory, selectedFormats(), config);
     m_worker->moveToThread(&m_thread);
     m_thread.start();
     QMetaObject::invokeMethod(m_worker.get(), &qt::PipelineWorker::initialize, Qt::BlockingQueuedConnection);
@@ -285,10 +341,11 @@ void MainWindow::start()
             });
     connect(m_worker.get(), &qt::PipelineWorker::countersChanged, this, &MainWindow::showCounters);
     connect(m_worker.get(), &qt::PipelineWorker::passage, this, &MainWindow::addPassage);
-    connect(m_worker.get(), &qt::PipelineWorker::failed, this,
-            [this](const QString& message) { showStatus(tr("Processing error: %1").arg(message)); });
+    connect(m_worker.get(), &qt::PipelineWorker::failed, this, [this](const QString& message) {
+        setStatus([message] { return tr("Processing error: %1").arg(message); });
+    });
     connect(m_worker.get(), &qt::PipelineWorker::finished, this, [this]() {
-        showStatus(tr("Source finished. %1").arg(m_runStatus));
+        setStatus([detector = m_detectorStatus] { return tr("Source finished. %1").arg(detector()); });
         qInfo().noquote() << "Source finished:" << m_counters->text();
         emit sourceFinished();
     });
@@ -298,15 +355,20 @@ void MainWindow::start()
     m_source->start([worker](const Frame& frame) { worker->submit(frame); },
                     [this](const std::string& message) {
                         const QString text = QString::fromStdString(message);
-                        QMetaObject::invokeMethod(this, [this, text]() { showStatus(tr("Source error: %1").arg(text)); },
-                                                  Qt::QueuedConnection);
+                        QMetaObject::invokeMethod(
+                            this, [this, text]() { setStatus([text] { return tr("Source error: %1").arg(text); }); },
+                            Qt::QueuedConnection);
                     },
                     [worker]() { QMetaObject::invokeMethod(worker, &qt::PipelineWorker::finish, Qt::QueuedConnection); });
 
     m_startButton->setEnabled(false);
     m_stopButton->setEnabled(true);
-    showStatus(demo ? tr("Synthetic demo: scripted plates of both countries, kept apart from real results. It shows no real accuracy.")
-                    : detectorStatus);
+    if (demo)
+        setStatus([] {
+            return tr("Synthetic demo: scripted plates of both countries, kept apart from real results. It shows no real accuracy.");
+        });
+    else
+        setStatus(m_detectorStatus);
 }
 
 void MainWindow::startVideo(const QString& path)
@@ -316,41 +378,50 @@ void MainWindow::startVideo(const QString& path)
     start();
 }
 
-QString MainWindow::prepareDetectors()
+MainWindow::Text MainWindow::prepareDetectors()
 {
 #ifdef VPR_HAS_ONNX
     if (!m_vehicleDetector) {
         const QString model = findModel(QStringLiteral("yolox_s.onnx"));
         if (model.isEmpty())
-            return tr("No vehicle model found, so no vehicles are detected. Run scripts/fetch-dependencies.sh.");
+            return [] { return tr("No vehicle model found, so no vehicles are detected. Run scripts/fetch-dependencies.sh."); };
         try {
             auto detector = std::make_shared<YoloxVehicleDetector>(model.toStdWString());
-            m_detectorName = tr("YOLOX-S on %1").arg(QString::fromStdString(detector->executionProvider()));
+            m_executionProvider = QString::fromStdString(detector->executionProvider());
             m_vehicleDetector = std::move(detector);
         } catch (const std::exception& error) {
-            return tr("Vehicle model failed to load, so no vehicles are detected: %1").arg(QString::fromUtf8(error.what()));
+            const QString reason = QString::fromUtf8(error.what());
+            return [reason] { return tr("Vehicle model failed to load, so no vehicles are detected: %1").arg(reason); };
         }
     }
+    const auto vehicles = [provider = m_executionProvider] { return tr("YOLOX-S on %1").arg(provider); };
     if (!m_plateDetector || !m_plateReader) {
         const QString detector = findModel(QStringLiteral("yolo-v9-t-640-license-plates-end2end.onnx"));
         const QString reader = findModel(QStringLiteral("cct_s_v2_global.onnx"));
         const QString config = findModel(QStringLiteral("cct_s_v2_global_plate_config.yaml"));
-        if (detector.isEmpty() || reader.isEmpty() || config.isEmpty())
-            return tr("Vehicles: %1. Plate models not found, so no plate is read. Run scripts/fetch-dependencies.sh.")
-                .arg(m_detectorName);
+        if (detector.isEmpty() || reader.isEmpty() || config.isEmpty()) {
+            return [vehicles] {
+                return tr("Vehicles: %1. Plate models not found, so no plate is read. Run scripts/fetch-dependencies.sh.")
+                    .arg(vehicles());
+            };
+        }
         try {
             m_plateDetector = std::make_shared<YoloV9PlateDetector>(detector.toStdWString());
             m_plateReader = std::make_shared<SlotPlateReader>(reader.toStdWString(), config.toStdWString());
         } catch (const std::exception& error) {
             m_plateDetector.reset();
             m_plateReader.reset();
-            return tr("Vehicles: %1. Plate models failed to load, so no plate is read: %2")
-                .arg(m_detectorName, QString::fromUtf8(error.what()));
+            const QString reason = QString::fromUtf8(error.what());
+            return [vehicles, reason] {
+                return tr("Vehicles: %1. Plate models failed to load, so no plate is read: %2").arg(vehicles(), reason);
+            };
         }
     }
-    return tr("Vehicles: %1. Plates: trial models, Latin letters only, so Iranian plates are not read yet.").arg(m_detectorName);
+    return [vehicles] {
+        return tr("Vehicles: %1. Plates: trial models, Latin letters only, so Iranian plates are not read yet.").arg(vehicles());
+    };
 #else
-    return tr("Built without ONNX Runtime, so no vehicles are detected. Run scripts/fetch-dependencies.sh and rebuild.");
+    return [] { return tr("Built without ONNX Runtime, so no vehicles are detected. Run scripts/fetch-dependencies.sh and rebuild."); };
 #endif
 }
 
@@ -380,16 +451,20 @@ bool MainWindow::searching() const
 
 void MainWindow::fillRow(int row, const ShownPassage& passage)
 {
-    m_table->setItem(row, 0, new QTableWidgetItem(passage.time));
-    m_table->setItem(row, 1, new QTableWidgetItem(passage.plate));
+    // The locale gives Persian digits and month names in Persian, the plate keeps its own characters.
+    const QString time = QLocale().toString(passage.time, passage.stored ? QStringLiteral("dd MMM HH:mm:ss")
+                                                                          : QStringLiteral("HH:mm:ss"));
+    m_table->setItem(row, 0, new QTableWidgetItem(time));
+    m_table->setItem(row, 1, new QTableWidgetItem(leftToRight(passage.plate)));
     m_table->setItem(row, 2, new QTableWidgetItem(passage.country));
-    m_table->setItem(row, 3, new QTableWidgetItem(passage.status));
+    m_table->setItem(row, 3, new QTableWidgetItem(statusText(passage.status)));
 }
 
 // Without search text the table lists this run, newest first. With it, the store of the chosen source.
 void MainWindow::showRows()
 {
     const QSignalBlocker blocker(m_table);
+    const int selected = m_table->currentRow();
     m_table->clearContents();
     if (!searching()) {
         m_searchResults.clear();
@@ -397,16 +472,19 @@ void MainWindow::showRows()
         m_table->setRowCount(count);
         for (int i = 0; i < count; ++i)
             fillRow(i, m_runPassages[static_cast<std::size_t>(count - 1 - i)]);
+        if (selected >= 0 && selected < count)
+            m_table->selectRow(selected);
         return;
     }
 
     m_searchResults.clear();
     for (const StoredPassage& row : repository().search({m_search->text().trimmed().toStdString(), 200})) {
         ShownPassage passage;
-        passage.time = QDateTime::fromMSecsSinceEpoch(row.timestampMs).toString(QStringLiteral("dd MMM HH:mm:ss"));
+        passage.time = QDateTime::fromMSecsSinceEpoch(row.timestampMs);
+        passage.stored = true;
         passage.plate = QString::fromStdString(row.displayText);
         passage.country = QString::fromStdString(row.countryCode);
-        passage.status = statusText(row.status);
+        passage.status = row.status;
         passage.vehiclePath = QString::fromStdString(row.vehicleImagePath);
         m_searchResults.push_back(std::move(passage));
     }
@@ -418,10 +496,10 @@ void MainWindow::showRows()
 void MainWindow::addPassage(const PassageEvent& event)
 {
     ShownPassage passage;
-    passage.time = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
+    passage.time = QDateTime::currentDateTime();
     passage.plate = QString::fromStdString(event.displayText);
     passage.country = QString::fromStdString(event.countryCode);
-    passage.status = statusText(event.status);
+    passage.status = event.status;
     // Kept small, a long run holds hundreds of these.
     const QImage vehicle = qt::toQImage(event.vehicleImage);
     passage.vehicle = vehicle.width() > 480 ? vehicle.scaledToWidth(480, Qt::SmoothTransformation) : vehicle;
@@ -439,8 +517,9 @@ void MainWindow::addPassage(const PassageEvent& event)
 
 void MainWindow::showPassage(const ShownPassage& passage)
 {
-    m_plateText->setText(passage.plate.isEmpty() ? passage.status
-                                                 : QStringLiteral("%1   %2").arg(passage.plate, passage.country));
+    m_shown = passage;
+    m_plateText->setText(passage.plate.isEmpty() ? statusText(passage.status)
+                                                 : leftToRight(QStringLiteral("%1   %2").arg(passage.plate, passage.country)));
     QImage vehicle = passage.vehicle;
     QImage plate = passage.platePicture;
     if (vehicle.isNull() && !passage.vehiclePath.isEmpty()) {
@@ -470,6 +549,7 @@ void MainWindow::showSelectedPassage()
 void MainWindow::clearRun()
 {
     m_runPassages.clear();
+    m_shown.reset();
     m_dropped = 0;
     m_plateText->setText(tr("No passage yet"));
     m_vehiclePhoto->clear();
@@ -503,14 +583,17 @@ PlateFormatRegistry MainWindow::selectedFormats() const
 
 void MainWindow::showCounters(const PassageCounters& counters)
 {
-    m_counters->setText(tr("Crossed %1 | Read %2 | Unknown %3 | No plate %4 | Dropped frames %5")
+    m_counterValues = counters;
+    // %L uses the digits of the chosen language.
+    m_counters->setText(tr("Crossed %L1 | Read %L2 | Unknown %L3 | No plate %L4 | Dropped frames %L5")
                             .arg(counters.crossed).arg(counters.read).arg(counters.unknownFormat)
                             .arg(counters.notVisible).arg(m_dropped));
 }
 
-void MainWindow::showStatus(const QString& text)
+void MainWindow::setStatus(Text text)
 {
-    statusBar()->showMessage(text);
+    m_status = std::move(text);
+    statusBar()->showMessage(m_status ? m_status() : QString());
 }
 
 void MainWindow::setLine(double ax, double ay, double bx, double by)
