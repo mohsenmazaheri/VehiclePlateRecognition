@@ -4,6 +4,10 @@ A cross platform (Windows, Linux) C++20 and Qt 6 library that tracks vehicles in
 vehicle crosses an adjustable line, reports its plate number with a photo of the vehicle.
 Target plates: standard private plates of Armenia and Iran.
 
+![The test tool on a street video from Yerevan: tracked vehicles, the yellow counting line, and the plate, plate photo and vehicle photo of the last vehicle that crossed it](docs/images/test-ui-road.jpg)
+
+*The test tool on a phone video from Yerevan. The second half of every plate number, and the people in one car, are pixelated for privacy.*
+
 **Status: early development.** The architecture, tracking, line crossing, plate voting, storage and test UI work and are tested.
 Vehicles are detected with a pretrained YOLOX-S model, and plates are found and read with two published **trial** models, all on the CPU.
 On seven phone videos from Yerevan, 229 vehicles crossed the line and 191 plates were read in a private Armenian format.
