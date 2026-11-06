@@ -110,7 +110,10 @@ SlotPlateReader::SlotPlateReader(const std::filesystem::path& modelPath, const s
             d.outputName = "plate";
     }
 
-    const auto info = d.session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo();
+    // The shape info is a view into the type info, so the type info must outlive it. A temporary here
+    // left a dangling view: it happened to work on Windows and read freed memory on Linux.
+    const Ort::TypeInfo typeInfo = d.session.GetInputTypeInfo(0);
+    const auto info = typeInfo.GetTensorTypeAndShapeInfo();
     const auto shape = info.GetShape();
     if (info.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8 || shape.size() != 4 || shape[3] != 3
         || shape[1] != d.config.inputHeight || shape[2] != d.config.inputWidth) {
