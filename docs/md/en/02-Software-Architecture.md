@@ -113,7 +113,7 @@ Implement the matching port in a new adapter. Only the composition root changes.
 | test_real_detector, 3 tests | Real YOLOX-S on one sample picture, real detections crossing the line | Passing on the same setup, skipped when the model is not downloaded |
 | test_video_file, 1 test | A generated MP4 through decoder, worker thread, YOLOX, tracker and line | Passing on the same setup, skipped when the model is not downloaded or no encoder exists |
 | architecture_rules | Direction of includes | Passing, and confirmed to fail on a violation |
-| GitHub Actions | Windows with MSVC and Qt 6.8, Linux with GCC and Qt 6.8 | Written, not yet run |
+| GitHub Actions | Windows with MSVC and Qt 6.8, Linux with GCC and Qt 6.8, all tests above | Passing on both since 6 November 2026. The first run found a bug that only showed on Linux: the plate reader check read freed memory |
 
 ## 11. First run on road footage
 
